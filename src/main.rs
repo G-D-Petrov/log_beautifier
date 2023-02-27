@@ -1,4 +1,6 @@
 pub mod arg_parser;
+use std::{fs::File, io::BufReader};
+
 use arg_parser::ArgumentParser;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -44,11 +46,17 @@ struct Profile {
     values: Vec<Filter>,
 }
 
+fn read_file(path: &String) -> BufReader<File> {
+    let f = File::open(path).expect(format!("Unable to read file: {}", path).as_str());
+    
+    BufReader::new(f)
+}
+
 fn read_files(args: &ArgumentParser) -> (Profile, String) {
-    let profile_file = std::fs::read_to_string(&args.profile).expect(format!("Unable to read profile file: {}", args.profile).as_str());
+    let profile_file = read_file(&args.profile);
     let log_file = std::fs::read_to_string(&args.log).expect("Unable to read log file");
 
-    let profile: Profile = serde_json::from_str(profile_file.as_str()).expect("Unable to parse profile file");
+    let profile: Profile = serde_json::from_reader(profile_file).expect("Unable to parse profile file");
 
     (profile, log_file)
 }
@@ -73,19 +81,8 @@ fn remove_lines_without_identifier<'a>(lines: Vec<&'a str>, identifier: &'a str)
     lines.par_iter().filter(|line| line.contains(identifier)).map(|line| *line).collect()
 }
 
-fn main() {
-    let args = ArgumentParser::parse();
-    let (profile, log) = read_files(&args);
-
-    let lines:Vec<&str> = log.lines().collect();
-    
-    let lines = if args.identifier != "" {
-        remove_lines_without_identifier(lines, args.identifier.as_str())
-    } else {
-        lines
-    };
-    // create a vector of tuples that will contain the filter and the line
-    let filtered_lines: Vec<(&Filter, String)> = lines.par_iter().filter(|line| {
+fn filter_lines<'a>(lines: Vec<&'a str>, profile: &'a Profile) -> Vec<(&'a Filter, String)> {
+    lines.par_iter().filter(|line| {
         for filter in &profile.values {
             if line.contains(filter.key.as_str()) {
                 return true;
@@ -99,7 +96,22 @@ fn main() {
             }
         }
         unreachable!()
-    }).collect();
+    }).collect()
+}
+
+fn main() {
+    let args = ArgumentParser::parse();
+    let (profile, log) = read_files(&args);
+
+    let lines:Vec<&str> = log.lines().collect();
+    
+    let lines = if args.identifier != "" {
+        remove_lines_without_identifier(lines, args.identifier.as_str())
+    } else {
+        lines
+    };
+    // create a vector of tuples that will contain the filter and the line
+    let filtered_lines: Vec<(&Filter, String)> = filter_lines(lines, &profile);
 
     for (filter, line)  in filtered_lines {
         print_line_to_terminal(&line, filter);
