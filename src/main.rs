@@ -69,13 +69,7 @@ fn print_line_to_terminal(line: &str, filter: &Filter) {
 }
 
 fn remove_lines_without_identifier<'a>(lines: Vec<&'a str>, identifier: &'a str) -> Vec<&'a str> {
-    let mut filtered_lines: Vec<&str> = Vec::new();
-    for line in lines {
-        if line.contains(identifier) {
-            filtered_lines.push(line);
-        }
-    }
-    filtered_lines
+    lines.iter().filter(|line| line.contains(identifier)).map(|line| *line).collect()
 }
 
 fn main() {
@@ -90,24 +84,21 @@ fn main() {
         lines
     };
     // create a vector of tuples that will contain the filter and the line
-    let mut filtered_lines: Vec<(&Filter, String)> = Vec::new();
-
-    for mut line in lines {
+    let filtered_lines: Vec<(&Filter, String)> = lines.iter().filter(|line| {
         for filter in &profile.values {
-            if !line.contains(filter.key.as_str()) {
-                continue;
+            if line.contains(filter.key.as_str()) {
+                return true;
             }
-
-            if !args.whole_line {
-                let index = line.find(filter.key.as_str()).unwrap();
-                line = line[index..].trim();
-            }
-            
-            let line = line.to_owned();
-            let to_append = (filter, line);
-            filtered_lines.push(to_append);
         }
-    } 
+        false
+    }).map(|line| {
+        for filter in &profile.values {
+            if line.contains(filter.key.as_str()) {
+                return (filter, line.to_string());
+            }
+        }
+        unreachable!()
+    }).collect();
 
     for (filter, line)  in filtered_lines {
         print_line_to_terminal(&line, filter);
