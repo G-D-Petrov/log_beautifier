@@ -2,6 +2,7 @@ pub mod arg_parser;
 use arg_parser::ArgumentParser;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
+use rayon::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Filter {
@@ -69,7 +70,7 @@ fn print_line_to_terminal(line: &str, filter: &Filter) {
 }
 
 fn remove_lines_without_identifier<'a>(lines: Vec<&'a str>, identifier: &'a str) -> Vec<&'a str> {
-    lines.iter().filter(|line| line.contains(identifier)).map(|line| *line).collect()
+    lines.par_iter().filter(|line| line.contains(identifier)).map(|line| *line).collect()
 }
 
 fn main() {
@@ -84,7 +85,7 @@ fn main() {
         lines
     };
     // create a vector of tuples that will contain the filter and the line
-    let filtered_lines: Vec<(&Filter, String)> = lines.iter().filter(|line| {
+    let filtered_lines: Vec<(&Filter, String)> = lines.par_iter().filter(|line| {
         for filter in &profile.values {
             if line.contains(filter.key.as_str()) {
                 return true;
