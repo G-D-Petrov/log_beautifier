@@ -2,60 +2,43 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main" ]
-
-env:
-  CARGO_TERM_COLOR: always
+    branches: [ main ]
 
 jobs:
-  get-subfolders:
+  build:
+
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - uses: actions/checkout@v2
 
-      - name: Get Subfolders
-        id: set-matrix
-        run: |
-          subfolders=$(find . -mindepth 2 -name 'Cargo.toml' -exec dirname {} \; | python3 -c 'import sys, json; print(json.dumps([line.strip() for line in sys.stdin]))')
-          echo "::set-output name=matrix::{\"project\": $subfolders}"
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
 
-  build_and_test:
-    needs: get-subfolders
-    runs-on: ubuntu-latest
-    strategy:
-      matrix: ${{ fromJSON(needs.get-subfolders.outputs.matrix) }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Check Code Formatting
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: -- --check
 
-      - name: Install pyGithub
-        run: |
-          python3 -m pip install pyGithub
+    - name: Lint with Clippy
+      uses: actions-rs/cargo@v1
+      with:
+        command: clippy
 
-      - name: Run cargo clippy and save output
-        working-directory: ${{ matrix.project }}
-        run: |
-          cargo clippy --verbose 2>&1 | tee clippy_output.log
+    - name: Build
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --verbose
 
-      - name: Create issues for build warnings
-        working-directory: ${{ matrix.project }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
-        run: |
-          python3 $GITHUB_WORKSPACE/.github/scripts/create_issues.py clippy_output.log
-
-
-      - name: Build ${{ matrix.project }}
-        working-directory: ${{ matrix.project }}
-        run: |
-          cargo build --verbose
-
-      - name: Test ${{ matrix.project }}
-        working-directory: ${{ matrix.project }}
-        run: |
-          cargo test --verbose
+    - name: Run tests
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --verbose
