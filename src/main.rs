@@ -1,11 +1,14 @@
 pub mod arg_parser;
-use std::{fs::File, io::{BufReader, BufRead, self}};
 use regex::Regex;
+use std::{
+    fs::File,
+    io::{self, BufRead, BufReader},
+};
 
 use arg_parser::ArgumentParser;
 use clap::Parser;
-use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Filter {
@@ -49,7 +52,7 @@ struct Profile {
 
 fn read_file(path: &str) -> BufReader<File> {
     let f = File::open(path).unwrap_or_else(|_| panic!("Unable to read file: {}", path));
-    
+
     BufReader::new(f)
 }
 
@@ -66,31 +69,63 @@ fn read_files(args: &ArgumentParser) -> (Profile, String) {
 }
 
 fn get_colored_box(filter: &Filter) -> String {
-    let color = format!("\x1b[48;2;{};{};{}m", filter.color.r, filter.color.g, filter.color.b);
+    let color = format!(
+        "\x1b[48;2;{};{};{}m",
+        filter.color.r, filter.color.g, filter.color.b
+    );
     let reset = "\x1b[0m";
 
     format!("{}{}{}", color, "    ", reset)
 }
 
-fn color_ips(line: &str, ips: &Vec<String>) -> String {
+fn color_ips(line: &str, ips: &Vec<String>, identifier: &str) -> String {
     let mut colored_line = String::from(line);
     for ip in ips {
         let octets: Vec<&str> = ip.split('.').collect();
-        colored_line = colored_line.replace(ip.as_str(), format!("\x1b[38;2;{};{};{}m{}\x1b[0m", octets[1], octets[2], octets[3], ip).as_str());
+        colored_line = colored_line.replace(
+            ip.as_str(),
+            format!(
+                "\x1b[38;2;{};{};{}m{}\x1b[0m",
+                octets[1], octets[2], octets[3], ip
+            )
+            .as_str(),
+        );
+    }
+
+    // if identifier is provided, color it in yellow
+    if !identifier.is_empty() {
+        colored_line = colored_line.replace(
+            identifier,
+            format!("\x1b[38;2;{};{};{}m{}\x1b[0m", 255, 255, 0, identifier).as_str(),
+        );
     }
 
     colored_line
 }
 
-fn print_line_to_terminal(line: &FilteredLine) {
+fn print_line_to_terminal(line: &FilteredLine, indetifier: &str) {
     let colored_box = get_colored_box(line.filter);
     let offset = " ".repeat(line.filter.offset as usize);
 
-    println!("{}{} {}", offset, colored_box, color_ips(line.line.as_str(), &line.ips));
+    println!(
+        "{}{} {}",
+        offset,
+        colored_box,
+        color_ips(line.line.as_str(), &line.ips, indetifier)
+    );
 }
 
 fn remove_lines_without_identifier<'a>(lines: Vec<&'a str>, identifier: &'a str) -> Vec<&'a str> {
-    lines.par_iter().filter(|line| line.contains(identifier)).map(|line| *line).collect()
+    lines
+        .par_iter()
+        .filter_map(|line| {
+            if line.contains(identifier) {
+                Some(*line)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 struct FilteredLine<'a> {
@@ -112,23 +147,17 @@ fn filter_line<'a>(line: &'a str, profile: &'a Profile) -> Option<FilteredLine<'
                 line: line.trim().to_string(),
                 filter,
                 ips,
-            })
+            });
         }
     }
     None
 }
 
 fn filter_lines<'a>(lines: Vec<&'a str>, profile: &'a Profile) -> Vec<FilteredLine<'a>> {
-    lines.par_iter().filter(|line| {
-        for filter in &profile.values {
-            if line.contains(filter.key.as_str()) {
-                return true;
-            }
-        }
-        false
-    }).map(|line| {
-        filter_line(line, profile).expect("Could not filter line")
-    }).collect()
+    lines
+        .par_iter()
+        .filter_map(|line| filter_line(line, profile))
+        .collect()
 }
 
 fn process_stdin(args: &ArgumentParser) {
@@ -138,7 +167,7 @@ fn process_stdin(args: &ArgumentParser) {
         let line = line.expect("Could not read line");
         let filtered_line = filter_line(line.as_str(), &profile);
         if let Some(line) = filtered_line {
-            print_line_to_terminal(&line);
+            print_line_to_terminal(&line, args.identifier.as_str());
         }
     }
 }
@@ -146,8 +175,8 @@ fn process_stdin(args: &ArgumentParser) {
 fn process_file(args: &ArgumentParser) {
     let (profile, log) = read_files(args);
 
-    let lines:Vec<&str> = log.lines().collect();
-    
+    let lines: Vec<&str> = log.lines().collect();
+
     let lines = if !args.identifier.is_empty() {
         remove_lines_without_identifier(lines, args.identifier.as_str())
     } else {
@@ -157,8 +186,8 @@ fn process_file(args: &ArgumentParser) {
     let filtered_lines: Vec<FilteredLine> = filter_lines(lines, &profile);
 
     for line in filtered_lines {
-        print_line_to_terminal(&line);
-    } 
+        print_line_to_terminal(&line, args.identifier.as_str());
+    }
 }
 
 fn main() {
