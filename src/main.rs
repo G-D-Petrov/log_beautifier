@@ -47,13 +47,13 @@ struct Profile {
     values: Vec<Filter>,
 }
 
-fn read_file(path: &String) -> BufReader<File> {
-    let f = File::open(path).expect(format!("Unable to read file: {}", path).as_str());
+fn read_file(path: &str) -> BufReader<File> {
+    let f = File::open(path).unwrap_or_else(|_| panic!("Unable to read file: {}", path));
     
     BufReader::new(f)
 }
 
-fn read_profile(path: &String) -> Profile {
+fn read_profile(path: &str) -> Profile {
     let file = read_file(path);
     serde_json::from_reader(file).expect("Unable to parse profile file")
 }
@@ -65,20 +65,6 @@ fn read_files(args: &ArgumentParser) -> (Profile, String) {
     (profile, log_file)
 }
 
-// fn read_files(args: &ArgumentParser) -> (Profile, Box<dyn BufRead>) {
-//     let profile_file = read_file(&args.profile);
-//     let profile: Profile = serde_json::from_reader(profile_file).expect("Unable to parse profile file");
-
-//     let log_data: Box<dyn BufRead> = if &args.log == "" {
-//         Box::new(io::BufReader::new(io::stdin()))
-//     } else {
-//         let file = File::open(&args.log).expect("Unable to open log file");
-//         Box::new(io::BufReader::new(file))
-//     };
-
-//     (profile, log_data)
-// }
-
 fn get_colored_box(filter: &Filter) -> String {
     let color = format!("\x1b[48;2;{};{};{}m", filter.color.r, filter.color.g, filter.color.b);
     let reset = "\x1b[0m";
@@ -89,7 +75,7 @@ fn get_colored_box(filter: &Filter) -> String {
 fn color_ips(line: &str, ips: &Vec<String>) -> String {
     let mut colored_line = String::from(line);
     for ip in ips {
-        let octets: Vec<&str> = ip.split(".").collect();
+        let octets: Vec<&str> = ip.split('.').collect();
         colored_line = colored_line.replace(ip.as_str(), format!("\x1b[38;2;{};{};{}m{}\x1b[0m", octets[1], octets[2], octets[3], ip).as_str());
     }
 
@@ -158,11 +144,11 @@ fn process_stdin(args: &ArgumentParser) {
 }
 
 fn process_file(args: &ArgumentParser) {
-    let (profile, log) = read_files(&args);
+    let (profile, log) = read_files(args);
 
     let lines:Vec<&str> = log.lines().collect();
     
-    let lines = if args.identifier != "" {
+    let lines = if !args.identifier.is_empty() {
         remove_lines_without_identifier(lines, args.identifier.as_str())
     } else {
         lines
@@ -177,7 +163,7 @@ fn process_file(args: &ArgumentParser) {
 
 fn main() {
     let args = ArgumentParser::parse();
-    if args.log == "" {
+    if args.log.is_empty() {
         process_stdin(&args)
     } else {
         process_file(&args)
