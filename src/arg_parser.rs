@@ -16,7 +16,7 @@ pub struct ArgumentParser {
     pub profile: String,
 
     /// Path to log that needs to be parsed
-    #[clap(short, long)]
+    #[clap(short, long, default_value = "")]
     pub log: String,
 
     /// Path to output html file
